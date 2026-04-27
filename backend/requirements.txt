@@ -1,0 +1,8 @@
+django>=4.2,<5.0
+djangorestframework>=3.14
+django-cors-headers>=4.3
+celery[redis]>=5.3
+redis>=5.0
+psycopg2-binary>=2.9
+gunicorn>=21.2
+dj-database-url>=2.1.0

@@ -59,33 +59,32 @@ if payout.status not in ['PENDING', 'PROCESSING']:
 ```
 Because the task acquires a lock on the `Payout` row and verifies that its status is strictly `'PROCESSING'` before allowing transitions to `'COMPLETED'` or `'FAILED'`, it rejects any attempt to move backwards or from a terminal state like `'FAILED'`.
 
-### 5. The AI Audit
+### 5. The AI Audit (Logic & Framework Syntax)
 
-**Subtly wrong code (Wrong locking placement with Idempotency):**
-The AI initially tried to perform the idempotency check *before* starting the `transaction.atomic()` block and acquiring the row lock on the merchant:
-```python
-# AI suggested this:
-existing_payout = Payout.objects.filter(merchant_id=merchant_id, idempotency_key=key).first()
-if existing_payout:
-    return Response(...)
+**Catch #1: Django CheckConstraint Syntax Hallucination**
+The AI initially provided code using the `condition` keyword for database-level constraints.
 
-with transaction.atomic():
-    merchant = Merchant.objects.select_for_update().get(id=merchant_id)
-    # ...
-```
+*The Bug:* In modern Django, `CheckConstraint` strictly requires the `check` keyword. Using `condition` causes a `TypeError` that crashes the `makemigrations` process.
 
-**What I caught:**
-I realized this introduces a race condition. If two requests arrive at the exact same millisecond, they both query for `existing_payout`, both find `None`, and both proceed to block on the `select_for_update()` lock. While the lock would prevent them from overdrawing if funds ran out, if the merchant had plenty of funds, *both* payouts would be created since the idempotency check had already been passed. The `UniqueConstraint` on `(merchant, idempotency_key)` would catch it via a database error, but it's a messy exception rather than a clean idempotent return.
+*The Fix:* I manually audited the `models.py` and corrected all constraints to use the `check=Q(...)` syntax, ensuring the database-level integrity guards actually deployed.
 
-**What I replaced it with:**
-I moved the idempotency check *inside* the `transaction.atomic()` block, explicitly after acquiring the lock on `Merchant`:
-```python
-with transaction.atomic():
-    merchant = Merchant.objects.select_for_update().get(id=merchant_id)
-    
-    existing_payout = Payout.objects.filter(merchant=merchant, idempotency_key=idempotency_key).first()
-    if existing_payout:
-        return Response(PayoutSerializer(existing_payout).data, status=status.HTTP_200_OK)
-    # ...
-```
-This guarantees that one request completes its check, logic, and insert before the second request even begins its idempotency check.
+**Catch #2: Testing Deadlocks (TestCase vs TransactionTestCase)**
+The AI confidently suggested a standard `TestCase` for concurrency testing with threads.
+
+*The Bug:* Django’s `TestCase` wraps tests in a single transaction that is never committed. Because child threads use independent connections, they couldn't see the setup data, leading to false-positive test results where the lock wasn't actually being tested.
+
+*The Fix:* I replaced it with `TransactionTestCase`, which forces a database commit, allowing the threads to actually contend for the `select_for_update` lock as they would in production.
+
+### 6. The Frontend & Environment Audit
+
+**Vite + Docker Networking**
+
+*The Challenge:* The initial Docker setup used an outdated Node runtime and didn't account for how Vite binds to network interfaces.
+
+*The Solution:* I upgraded the frontend to `node:20-alpine` and configured Vite to listen on `0.0.0.0`. This allowed the Windows host browser to successfully route requests to the containerized Vite dev server.
+
+**API Response "Unwrapping"**
+
+*The Bug:* The frontend was stuck on a "Loading" state because it expected a raw array of merchants. However, Django REST Framework (DRF) often wraps lists in a pagination object (e.g., `{"count": X, "results": []}`).
+
+*The Fix:* I implemented a defensive "unwrapping" logic in the React fetch calls to detect both raw arrays and DRF paginated objects, ensuring the dashboard renders correctly regardless of backend pagination settings.

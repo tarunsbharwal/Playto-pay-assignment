@@ -11,7 +11,10 @@ This is the backend and frontend for the Playto Payout Engine, a robust, concurr
 1. **Merchant Ledger**: Computes balance strictly from an append-only transaction ledger.
 2. **Payout API**: Fully idempotent and concurrent-safe using `SELECT FOR UPDATE` and DB-level constraints.
 3. **Background Processing**: A robust Celery worker simulates bank settlement, with retry logic and state guards.
-4. **React Dashboard**: Live-updating React frontend showing balances and payout history.
+4. **React Dashboard**: Live-updating React frontend with a Merchant Switcher to toggle between different accounts (Acme Corp vs Globex Inc) and view independent ledger histories.
+
+## Technical Deep Dive
+For a detailed breakdown of how I handled concurrency locks, idempotency, and ledger integrity, please refer to [EXPLAINER.md](./EXPLAINER.md).
 
 ## Getting Started (Docker Compose) - Zero Friction Setup
 
@@ -34,6 +37,11 @@ We have containerized the entire stack (PostgreSQL, Redis, Django API, Celery Wo
 4. The system is now fully operational!
    - **Frontend Dashboard**: Open [http://localhost:5173](http://localhost:5173) in your browser.
    - **Backend API**: Running at [http://localhost:8000/api/v1/](http://localhost:8000/api/v1/)
+   
+   *Verify Data*: If you open the dashboard and see "No merchants seeded," run this command to manually inject the test data:
+   ```bash
+   docker-compose exec backend python seed.py
+   ```
 5. To view the live logs of the Celery payout processor simulating bank settlements:
    ```bash
    docker-compose logs -f celery_worker

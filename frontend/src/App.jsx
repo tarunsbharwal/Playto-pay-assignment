@@ -79,7 +79,7 @@ function App() {
           'Idempotency-Key': crypto.randomUUID()
         },
         body: JSON.stringify({
-          amount: amountPaise,
+          amount_paise: amountPaise, // <-- THE FINAL FIX IS HERE
           bank_account_id: bankAccount
         })
       })
@@ -206,12 +206,13 @@ function App() {
                       <td className="px-6 py-4 text-gray-500 font-mono text-xs">{p.id.split('-')[0]}...</td>
                       <td className="px-6 py-4">{new Date(p.created_at).toLocaleString()}</td>
                       <td className="px-6 py-4 font-mono text-xs">{p.bank_account_id}</td>
-                      <td className="px-6 py-4 font-medium">₹{(p.amount / 100).toFixed(2)}</td>
+                      {/* THE FIX IS ON THE NEXT LINE */}
+                      <td className="px-6 py-4 font-medium">₹{(p.amount_paise / 100).toFixed(2)}</td>
                       <td className="px-6 py-4">
                         <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium border ${p.status === 'COMPLETED' ? 'bg-green-50 text-green-700 border-green-200' :
-                            p.status === 'FAILED' ? 'bg-red-50 text-red-700 border-red-200' :
-                              p.status === 'PROCESSING' ? 'bg-orange-50 text-orange-700 border-orange-200 animate-pulse' :
-                                'bg-yellow-50 text-yellow-700 border-yellow-200'
+                          p.status === 'FAILED' ? 'bg-red-50 text-red-700 border-red-200' :
+                            p.status === 'PROCESSING' ? 'bg-orange-50 text-orange-700 border-orange-200 animate-pulse' :
+                              'bg-yellow-50 text-yellow-700 border-yellow-200'
                           }`}>
                           {p.status}
                         </span>

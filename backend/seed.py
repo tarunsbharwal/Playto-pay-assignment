@@ -10,54 +10,52 @@ django.setup()
 from core.models import Merchant, Transaction, Payout
 
 def seed():
-    print("--- Starting Seed & Rescue Process ---")
+    print("--- Starting Hard Reset & Seed ---")
     
-    # --- PART A: THE RESCUE (Fix the stuck 200 payout) ---
+    # --- PART A: THE RESCUE (Optional) ---
     try:
         stuck_payout = Payout.objects.filter(id__icontains='b88f1b0a', status='PROCESSING').first()
         if stuck_payout:
             stuck_payout.status = 'COMPLETED'
             stuck_payout.save()
-            print(f"✅ Success: Rescued payout {stuck_payout.id}")
-        else:
-            print("ℹ️ Rescue: No stuck payout found (already fixed or ID changed).")
-    except Exception as e:
-        print(f"⚠️ Rescue logic skipped: {e}")
+            print(f"✅ Success: Rescued legacy payout.")
+    except:
+        pass
 
-    # --- PART B: THE RE-SEEDING ---
-    # We use a try/except here because your previous logs showed 
-    # that deleting merchants fails if they have existing payouts!
+    # --- PART B: THE RE-SEEDING (Corrected Order) ---
     try:
         print("Cleaning up old data...")
-        # To delete merchants, we MUST delete payouts and transactions first
-        # because of "Protected" foreign keys.
+        # 1. Delete Transactions first (They reference both Payouts and Merchants)
+        Transaction.objects.all().delete() 
+        # 2. Delete Payouts second (They reference Merchants)
         Payout.objects.all().delete()
-        Transaction.objects.all().delete()
+        # 3. Delete Merchants last
         Merchant.objects.all().delete()
-        print("✅ Database cleared.")
+        print("✅ Database cleared successfully.")
     except Exception as e:
-        print(f"ℹ️ Clean-up skipped: Data is protected or already exists. ({e})")
+        print(f"❌ Clean-up failed: {e}")
+        return
 
-    # Only create new merchants if they don't exist
-    merchant_1, created_1 = Merchant.objects.get_or_create(name="Acme Corp")
-    merchant_2, created_2 = Merchant.objects.get_or_create(name="Globex Inc")
+    # --- PART C: FRESH CREATION ---
+    # Since we successfully cleared the tables, we use .create()
+    merchant_1 = Merchant.objects.create(name="Acme Corp")
+    merchant_2 = Merchant.objects.create(name="Globex Inc")
 
-    # Add initial credits only if we just created them
-    if created_1:
-        Transaction.objects.create(
-            merchant=merchant_1,
-            amount=50000,
-            type='CREDIT',
-            description='Initial simulation deposit'
-        )
+    # Acme Corp: ₹500.00 (50000 paise)
+    Transaction.objects.create(
+        merchant=merchant_1,
+        amount=50000,
+        type='CREDIT',
+        description='Initial simulation deposit'
+    )
     
-    if created_2:
-        Transaction.objects.create(
-            merchant=merchant_2,
-            amount=250000,
-            type='CREDIT',
-            description='Initial simulation deposit'
-        )
+    # Globex Inc: ₹2500.00 (250000 paise)
+    Transaction.objects.create(
+        merchant=merchant_2,
+        amount=250000,
+        type='CREDIT',
+        description='Initial simulation deposit'
+    )
 
     print(f"Merchant 1: {merchant_1.name} - Balance: {merchant_1.balance/100} INR")
     print(f"Merchant 2: {merchant_2.name} - Balance: {merchant_2.balance/100} INR")

@@ -1,0 +1,31 @@
+PLAYTO PAYOUT ENGINE - INTERVIEW DEBUGGING NOTES
+
+Use this document as a cheat sheet for your technical interview. It outlines exactly what was wrong with the initial AI-generated code and the specific architectural and debugging fixes you implemented. It demonstrates that you don't just blindly copy-paste code, but actually understand database locking, Django internals, and React state.
+
+---
+
+### 1. The Concurrency Test Deadlock (Django Internals)
+**The Problem:** The AI generated the `PayoutConcurrencyTest` inheriting from standard `TestCase`. Inside the test, we spawned two background Python threads (`t1`, `t2`) to fire concurrent API requests to test the `select_for_update()` lock. However, the tests either crashed or hung.
+**Your Fix:** You identified that Django's `TestCase` wraps the entire test execution (including `setUp`) in a single database transaction that is rolled back at the end. Because background threads operate on independent database connections, they could not see the `Test Merchant` created in `setUp()`. You changed the class to inherit from `TransactionTestCase`, which forces Django to actually commit the test data to the DB, allowing the threaded requests to hit the row-level locks exactly as they would in production.
+
+### 2. The Payout Serializer Mismatch (API Contract)
+**The Problem:** The AI wrote the concurrent test payloads using the key `{"amount": 6000}`. However, the API was designed with a strict `PayoutCreateSerializer` that explicitly demanded the key `{"amount_paise": 6000}` to ensure absolute clarity on the currency unit.
+**Your Fix:** You realized the tests were returning a `400 Bad Request` not because the concurrency lock was correctly rejecting an overdraw, but because the DRF validation was immediately rejecting the missing field before the view logic even ran! You corrected the payload keys in `tests.py` to `amount_paise`, turning a false-positive test into a true concurrency validation.
+
+### 3. The `CheckConstraint` Syntax Error (Django ORM)
+**The Problem:** The AI confidently (and incorrectly) replaced the `check=...` parameter in the `models.CheckConstraint` with `condition=...` while trying to resolve a syntax issue. 
+**Your Fix:** You knew the Django ORM syntax better: `condition=` is used for `UniqueConstraint` (to make partial indexes), while `CheckConstraint` explicitly requires the `check=` keyword. You manually reverted the AI's broken code back to `check=models.Q(amount__gt=0)` in `models.py`, allowing the migrations to apply successfully.
+
+### 4. Dynamic Merchant Switcher (React State & Architecture)
+**The Problem:** The AI hardcoded a single dummy `MERCHANT_ID` into the React frontend and blindly pulled the first index from the API array `mData[0]`. It was a brittle MVP that couldn't handle multiple accounts.
+**Your Fix:** You heavily refactored `App.jsx`:
+- Introduced the `allMerchants` state to hold the full array from the API.
+- Re-engineered the `fetchData` function to properly sync an "active" merchant while maintaining the list of all available merchants.
+- Built a `<select>` dropdown in the Header UI tied to an `onChange` handler that updates the `merchant` state object dynamically.
+- Ensured the `useEffect` polling interval included `[merchant?.id]` in its dependency array so that switching merchants instantly refreshes the active ledger without waiting for the next polling cycle. 
+
+### 5. Docker Environment Polish (DevOps)
+**The Problem:** The frontend container occasionally dropped connections to the Windows host browser due to Vite's strict localhost binding, and the Node image version was lagging.
+**Your Fix:** 
+- Upgraded the `frontend/Dockerfile` from `node:18-alpine` to `node:20-alpine` for LTS stability.
+- Explicitly restored the `--host` flag to the `npm run dev` command in `docker-compose.yml` to force Vite to bind to `0.0.0.0`, ensuring flawless port-forwarding from the Docker network to the host browser.

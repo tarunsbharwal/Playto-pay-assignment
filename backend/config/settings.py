@@ -1,5 +1,6 @@
 import os
 from pathlib import Path
+import dj_database_url
 
 BASE_DIR = Path(__file__).resolve().parent.parent
 
@@ -125,3 +126,17 @@ LOGGING = {
         },
     },
 }
+
+# --- CLOUD DEPLOYMENT OVERRIDES ---
+# If Render provides a DATABASE_URL, override the local database settings
+if os.environ.get('DATABASE_URL'):
+    DATABASES['default'] = dj_database_url.config(
+        default=os.environ.get('DATABASE_URL'),
+        conn_max_age=600,
+        conn_health_checks=True,
+    )
+
+# If Upstash provides a REDIS_URL, override the local Celery broker URLs
+if os.environ.get('REDIS_URL'):
+    CELERY_BROKER_URL = os.environ.get('REDIS_URL')
+    CELERY_RESULT_BACKEND = os.environ.get('REDIS_URL')
